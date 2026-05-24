@@ -30,11 +30,6 @@ let viewgird = [
     component: () => import('@/views/sys/system/Sys_Role.vue')
   },
   {
-    path: '/Sys_Language',
-    name: 'Sys_Language',
-    component: () => import('@/views/sys/lang/Sys_Language.vue')
-  },
-  {
     path: '/FormDesignOptions',
     name: 'FormDesignOptions',
     component: () => import('@/views/sys/form/FormDesignOptions.vue')
@@ -83,11 +78,6 @@ let viewgird = [
     path: '/Sys_Department',
     name: 'Sys_Department',
     component: () => import('@/views/sys/system/Sys_Department.vue')
-  },
-  {
-    path: '/Sys_Region',
-    name: 'Sys_Region',
-    component: () => import('@/views/sys/system/Sys_Region.vue')
   },
   {
     path: '/MES_WarehouseManagement',
@@ -213,11 +203,11 @@ let viewgird = [
     path: '/ProductionState',
     name: 'ProductionState',
     component: () => import('@/views/mes/state/ProductionState.vue')
-  }    ,{
-        path: '/TestService',
-        name: 'TestService',
-        component: () => import('@/views/mes/mes/TestService.vue')
-    }]
+  }, {
+    path: '/TestService',
+    name: 'TestService',
+    component: () => import('@/views/mes/mes/TestService.vue')
+  }]
 
 //上面的demo、MES开头的都是示例菜单，可以任意删除 
 export default viewgird

@@ -6,14 +6,25 @@ namespace VOL.Core.Enums
 {
     public enum LinqExpressionType
     {
-        Equal=0,//=
-        NotEqual=1,//!=
+        Equal = 0,//=
+        NotEqual = 1,//!=
         GreaterThan,//>
         LessThan,//<
         ThanOrEqual,//>=
         LessThanOrEqual,//<=
         In,
+        NotIn,
         Contains,//Contains
-        NotContains//NotContains
+        Like,//Contains
+        LikeStart,
+        LikeEnd,
+        NotLike,
+        NotContains,//NotContains
+        Null,
+        NotNull,
+        Empty,
+        NotEmpty,
+        NullOrEmpty,
+        NotNullOrEmpty
     }
 }

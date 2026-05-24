@@ -20,6 +20,7 @@
   <el-form
     style="width: 100%; position: relative"
     :inline="true"
+    :key="optionLayoutKey"
     ref="volform"
     @submit.prevent
     :model="formFields"
@@ -40,9 +41,12 @@
           v-for="(item, index) in row"
           :prop="item.field"
           :key="index"
-          :class="{ 'vol-form-hiden-field': !item.field || !item.title }"
+          :class="[
+            !item.field || !item.title ? 'vol-form-hiden-field' : '',
+            'vol-form-item-' + (item.type || 'input'),
+          ]"
           :style="getColWidth(formRules, item)"
-          style="float: left; margin-right: 0; padding: 0 10px; margin-bottom: 14px"
+          style="float: left; margin-right: 0; padding: 0 10px; margin-bottom: 10px"
         >
           <template #label>
             <form-expand
@@ -53,10 +57,10 @@
             <span v-else :style="item.labelStyle">
               {{
                 $ts(item.title) +
-                ((labelPosition == "left" || $global.labelPosition == "left") &&
+                ((labelPosition == "top" || $global.labelPosition == "top") &&
                 item.title
-                  ? ":"
-                  : "")
+                  ? ""
+                  : ":")
               }}
             </span>
           </template>
@@ -82,7 +86,7 @@
                 :key="imgIndex"
               >
                 <img
-                  :style="item.style"
+                  :style="getImgReadonlyStyle(item)"
                   :src="getSrc(img.path, http, access_token)"
                   @error="handleImageError"
                   @click="previewImg(img.path, access_token, http)"
@@ -117,9 +121,6 @@
               class="readonly-input"
               >{{ getText(formFields, item, $ts) }}</label
             >
-            <!-- 20223.05.13集成el-tree-select -->
-            <!-- :filter-method="(value)=>{filterMethod(value,item.data)}" -->
-            <!-- :filterable="true" -->
             <el-tree-select
               style="width: 100%"
               v-else-if="item.type == 'treeSelect'"
@@ -129,7 +130,9 @@
               :multiple="item.multiple"
               :render-after-expand="false"
               :show-checkbox="true"
-              :check-strictly="true"
+              :check-strictly="
+                item.checkStrictly === undefined ? true : item.checkStrictly
+              "
               check-on-click-node
               node-key="key"
               :props="{ label: 'label' }"
@@ -141,12 +144,14 @@
             >
               <template #default="{ data, node }"> {{ $ts(data.label) }}</template>
             </el-tree-select>
+
             <template v-else-if="['select', 'selectList'].indexOf(item.type) != -1">
               <el-select-v2
                 :disabled="item.readonly || item.disabled"
                 v-show="!item.hidden"
                 style="width: 100%"
                 :size="size"
+                :props="{ label: 'value', value: 'key' }"
                 v-if="item.data.length > select2Count"
                 v-model="formFields[item.field]"
                 filterable
@@ -162,7 +167,7 @@
                 clearable
               >
                 <template #default="{ item }">
-                  {{ $ts(item.label) }}
+                  {{ $ts(item.label || item.value) }}
                 </template>
               </el-select-v2>
               <el-select
@@ -200,7 +205,8 @@
                 v-else
                 :ref="item.field"
                 v-model="formFields[item.field]"
-                filterable
+                :reserve-keyword="false"
+                :filterable="item.filter === undefined ? true : false"
                 :multiple="item.type == 'select' ? false : true"
                 :placeholder="$ts(item.placeholder || '请选择')"
                 :allow-create="item.autocomplete"
@@ -286,6 +292,7 @@
                 :disabled="item.readonly || kv.readonly || kv.disabled"
                 :label="kv.value"
                 :value="kv.key"
+                v-show="!kv.hidden"
                 >{{ $ts(kv.value) }}</el-checkbox
               >
             </el-checkbox-group>
@@ -358,7 +365,8 @@
               >
               </el-date-picker>
             </div>
-
+            <!-- time字段：数据库字段要用varhcar类型
+             如果使用的是date/datetime类型,需要设置表单配置的字段属性valueFormat='YYYY-MM-DD HH:mm' -->
             <el-time-picker
               :ref="item.field"
               :size="size"
@@ -366,8 +374,8 @@
               v-model="formFields[item.field]"
               :disabled="item.readonly || item.disabled"
               :placeholder="$ts('时间')"
-              :value-format="item.format || 'HH:mm:ss'"
-              :format="item.format"
+              :value-format="item.valueFormat || 'HH:mm'"
+              :format="item.format || 'HH:mm'"
               @change="item.onChange"
               style="width: 100%"
             >
@@ -416,21 +424,24 @@
               :remove-before="item.removeBefore"
               :downLoad="item.downLoad ? true : false"
             ></vol-upload>
-            <el-cascader
-              :size="size"
-              :ref="item.field"
-              clearable
-              style="width: 100%; margin-top: -3px"
-              v-model="formFields[item.field]"
-              :disabled="item.readonly || item.disabled"
-              v-else-if="item.type == 'cascader'"
-              :options="item.data"
-              :props="{
-                checkStrictly: item.changeOnSelect || item.checkStrictly,
-              }"
-              @change="item.onChange"
-            >
-            </el-cascader>
+            <div v-else-if="item.type == 'cascader'">
+              <el-cascader
+                :size="size"
+                :ref="item.field"
+                clearable
+                style="width: 100%; margin-top: -3px"
+                v-model="formFields[item.field]"
+                :disabled="item.readonly || item.disabled"
+                :options="item.data"
+                :placeholder="$ts(item.placeholder || item.title)"
+                filterable
+                :props="{
+                  checkStrictly: item.changeOnSelect || item.checkStrictly,
+                }"
+                @change="item.onChange"
+              >
+              </el-cascader>
+            </div>
             <el-rate
               v-else-if="item.type == 'rate'"
               @change="
@@ -448,6 +459,9 @@
                 style="flex: 1"
                 v-model="formFields[item.field][0]"
                 clearable
+                :formatter="item.formatter"
+                :suffix-icon="item.suffixIcon"
+                :prefix-icon="item.prefixIcon"
               />
               <span style="margin: 0 5px">-</span>
               <el-input
@@ -456,6 +470,9 @@
                 style="flex: 1"
                 v-model="formFields[item.field][1]"
                 clearable
+                :formatter="item.formatter"
+                :suffix-icon="item.suffixIcon"
+                :prefix-icon="item.prefixIcon"
               />
             </div>
             <template v-else-if="item.type == 'color'">
@@ -496,7 +513,11 @@
               @change="item.onKeyPress"
               @blur="item.blur"
               @focus="item.focus"
+              :formatter="item.formatter"
+              :suffix-icon="item.suffixIcon"
+              :prefix-icon="item.prefixIcon"
             />
+            <!-- @keyup.enter="item.onKeyPress"加了会异常 -->
             <el-input-number
               :size="size"
               style="width: 100%"
@@ -507,17 +528,22 @@
               :precision="item.precision"
               :min="item.min"
               :disabled="item.readonly || item.disabled"
+              :placeholder="$ts(item.placeholder || item.title)"
               :max="item.max"
-              controls-position="right"
+              :controls-position="item.position || 'right'"
               @keypress="
                 ($event) => {
-                  onKeyPress($event, item);
+                  onKeyPress($event, item, true);
                 }
               "
               @change="item.onKeyPress"
-              @keyup.delete="($event)=>{item.onKeyPress&&item.onKeyPress($event,item)}"
               @blur="item.blur"
               @focus="item.focus"
+              @keyup.delete="
+                ($event) => {
+                  item.onKeyPress && item.onKeyPress($event, item);
+                }
+              "
             />
             <el-input
               :size="size"
@@ -529,6 +555,9 @@
               :disabled="item.readonly || item.disabled"
               v-show="!item.hidden"
               :placeholder="$ts(item.placeholder || item.title)"
+              :formatter="item.formatter"
+              :suffix-icon="item.suffixIcon"
+              :prefix-icon="item.prefixIcon"
             />
             <!-- 2021.11.18修复el-input没有默认enter事件时回车异常 -->
             <el-input
@@ -546,16 +575,20 @@
                   onKeyPress($event, item);
                 }
               "
-              @keyup.delete="item.onKeyPress"
+              @keyup.delete.native="item.onKeyPress"
               @change="item.onKeyPress"
               @keyup.enter="item.onKeyPress"
               @blur="item.blur"
               @focus="item.focus"
+              :formatter="item.formatter"
+              :suffix-icon="item.suffixIcon"
+              :prefix-icon="item.prefixIcon"
             ></el-input>
             <el-input
               :size="size"
               clearable
               v-else
+              :formatter="item.formatter"
               :ref="item.field"
               :input-style="item.inputStyle"
               :placeholder="$ts(item.placeholder || item.title)"
@@ -564,6 +597,8 @@
               v-model="formFields[item.field]"
               @blur="item.blur"
               @focus="item.focus"
+              :prefix-icon="item.prefixIcon"
+              :suffix-icon="item.suffixIcon"
             ></el-input>
 
             <div class="form-extra" v-if="item.extra">
@@ -599,9 +634,8 @@
 import {
   ref,
   reactive,
+  nextTick,
   getCurrentInstance,
-  toRaw,
-  toRefs,
   defineAsyncComponent,
   computed,
 } from "vue";
@@ -614,6 +648,7 @@ const VolWangEditor = defineAsyncComponent(() =>
 
 import formProps from "./VolForm/VolFormProps.js";
 import getItemRule from "./VolForm/VolFormItemRule.js";
+import { regEventNext } from "./VolForm/VolFormEventNext.js";
 import {
   getDateFormat,
   getShortcuts,
@@ -630,6 +665,7 @@ import {
   previewImg,
   dowloadFile,
   getSrc,
+  getImgReadonlyStyle,
 } from "./VolForm/VolFormProvider.js";
 
 const emit = defineEmits(["dicInited", "tabClick"]);
@@ -706,6 +742,9 @@ const initSource = (resetData = true) => {
   );
 };
 initSource(false);
+const initDicKeys = (resetData = true) => {
+  initSource(resetData);
+};
 
 let isFirstCheck = true;
 const rules = computed(() => {
@@ -725,6 +764,10 @@ const rules = computed(() => {
   return ruleResult;
 });
 
+if (props.eventNext && proxy.$global.formEventNext !== false) {
+  regEventNext(proxy, props.formRules);
+}
+
 const handleImageError = ($e) => {
   $e.target.src = defaultImg;
 };
@@ -736,8 +779,8 @@ const fileOnChange = (files, item) => {
   return true;
 };
 
-const onKeyPress = ($event, item) => {
-  if ($event.keyCode == 13) {
+const onKeyPress = ($event, item, isNumber) => {
+  if ($event.keyCode == 13 && !isNumber) {
     return;
   }
   item.onKeypress && item.onKeypress($event);
@@ -755,7 +798,10 @@ const validate = async (callback) => {
   let result = true;
   await volform.value.validate((valid) => {
     if (!valid) {
-      proxy.$message.error(proxy.$ts("数据验证未通过!"));
+      proxy.$message.error({
+        message: proxy.$ts("数据验证未通过!"),
+        duration: 2000,
+      });
       result = false;
       return;
     }
@@ -775,6 +821,7 @@ const validate = async (callback) => {
 const reset = (sourceObj) => {
   // 重置表单时，禁用远程查询
   volform.value.resetFields();
+  volform.value?.clearValidate();
   if (rangeFields.length) {
     rangeFields.forEach((key) => {
       props.formFields[key].splice(0);
@@ -798,13 +845,32 @@ const reset = (sourceObj) => {
     }
   }
 };
+//设置焦点
+const focus = (field) => {
+  nextTick(() => {
+    const refField = proxy.$refs[field];
+    if (Array.isArray(refField)) {
+      refField[0]?.focus(refField[0]);
+    } else {
+      refField?.focus(refField);
+    }
+  });
+};
+
+const optionLayoutKey = ref(0);
+const setOptionLayoutKey = () => {
+  optionLayoutKey.value++;
+};
 
 defineExpose({
   initSource,
+  initDicKeys,
   validate,
   reset,
   currentGroup,
   setTab,
+  focus,
+  setOptionLayoutKey,
 });
 </script>
 <style lang="less" scoped>

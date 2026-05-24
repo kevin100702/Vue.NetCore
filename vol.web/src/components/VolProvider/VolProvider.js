@@ -1,4 +1,5 @@
 import common from '@/uitils/common.js'
+import { compressImage } from './VolImgCompress.js'
 import store from '@/store/index'
 const getImgUrls = (imgs) => {
   return imgs
@@ -27,6 +28,8 @@ const getFormValues = (formFields, formOptions) => {
     if (typeof val == 'function') {
       formValues[key] = formFields[key]()
       continue
+    } else if (typeof val == 'string' && val) {
+      val = val.trim();
     }
     //解决下拉框清除后不能保存数据的问题
     if (val === undefined) {
@@ -115,6 +118,9 @@ const setFormValue = (formFields, formOptions, field, data) => {
   }
   if (typeof newVal == 'boolean') {
     newVal = newVal ? 1 : 0;
+    if (!isNumber) {
+      newVal = newVal + '';
+    }
   }
   else if (isNumber || option.type == 'number' || option.type == 'decimal') {
     newVal = newVal * 1
@@ -239,6 +245,15 @@ const getItem = (key) => {
   const obj = store.getters.data()[key]
   return obj
 }
+
+const ASYNCAPI = 'asyncApi';
+const getAsyncApi = (table) => {
+  return (store.getters.data()[ASYNCAPI] || []).includes(table) ? 'Async' : '';
+}
+const setAsyncApi = (tables) => {
+  store.getters.data()[ASYNCAPI] = tables || []
+}
+
 const getAccessToken = () => {
   const tk = (store.getters.getUserInfo() || { accessToken: '' }).accessToken
   return tk ? '?access_token=' + tk : ''
@@ -282,9 +297,13 @@ const getSearchParameters = (proxy, formFields, formRules) => {
       //查询下面所有的子节点，如：选中的是父节点，应该查询下面所有的节点数据--待完
       if (value && value.length) {
         let nodes = proxy.base.getTreeAllChildren(value[value.length - 1], option.orginData)
-        value = nodes.map((x) => {
-          return x.id
-        })
+        if (!(nodes?.length)) {
+          value = [value[value.length - 1]]
+        } else {
+          value = nodes.map((x) => {
+            return x.id
+          })
+        }
         displayType = 'selectList'
       }
     } else if (displayType == 'treeSelect' && Array.isArray(value)) {
@@ -321,6 +340,179 @@ const getSearchParameters = (proxy, formFields, formRules) => {
   return wheres
 }
 
+
+const generateUniqueFileName = (originalFileName) => {
+  const timestamp = new Date().getTime();
+  const random = Math.random().toString(36).substring(2, 8);
+  const parts = originalFileName.split('.');
+  const fileExtension = parts.length > 1 ? parts.pop().toLowerCase() : '';
+  let uniqueFileName = `${timestamp}_${random}.${fileExtension}`
+  return uniqueFileName;
+};
+//重置文件名
+const resetFileName = async (files, callbck) => {
+  if (!files?.length) return
+  for (let index = 0; index < files.length; index++) {
+    let originalFile = files[index]
+    if (!originalFile.size) {
+      continue;
+    }
+    let uniqueFileName = await callbck?.(originalFile);
+    if (uniqueFileName === false) {
+      continue;
+    }
+    if (!uniqueFileName) {
+      uniqueFileName = generateUniqueFileName(originalFile.name)
+    }
+    let extension = '';
+    if (!uniqueFileName.includes('.')) {
+      extension = '.' + originalFile.name.split('.').pop();
+    }
+    const newFile = new File([originalFile], uniqueFileName + extension, {
+      type: originalFile.type,
+      lastModified: originalFile.lastModified
+    });
+    newFile.input = originalFile.input
+    files.splice(index, 1, newFile);
+  }
+}
+const fileType = ['img', 'file', 'excel']
+
+const convertToVolFormArray = (data, tableName) => {
+
+  data = data.filter(x => { return !x.detail }).map(x => {
+    const obj = {
+      field: x.field, title: x.title, width: x.width,
+      // readonly: !!x.isReadDataset,
+      // required: x.isNull + '' === '0'
+    };
+    const readDs = Number(x.isReadDataset);
+    if (readDs === 1 || readDs === 2) {
+      obj.readonly = true;
+    }
+    if (x.isNull + '' === '0') {
+      obj.required = true;
+    }
+    if (x.dropNo && x.formType) {
+      obj.dataKey = x.dropNo;
+      obj.data = []
+    }
+    obj.type = x.formType
+    if (fileType.includes(obj.type)) {
+      obj.url = `api/${tableName}/upload`
+      obj.multiple = true;
+      obj.maxFile = 6;
+      obj.maxSize = 100
+    }
+    //级联默认可以选择任意一级
+    if (x.formType == "cascader" && x.checkStrictly === undefined) {
+      obj.checkStrictly = true
+    }
+    return obj
+  })
+  const result = [];
+  let currentGroup = [];
+  let wd = 0;
+  let len = 0;
+  for (let i = 0; i < data.length; i++) {
+    let item = data[i];
+    wd += item.width || 25;
+    if (wd > 100) {
+      result.push(currentGroup);
+      currentGroup = []
+      currentGroup.push(item);
+      wd = item.width || 25;
+    } else {
+      currentGroup.push(item);
+    }
+    if (currentGroup.length > len) {
+      len = currentGroup.length
+    }
+  }
+  if (currentGroup.length) {
+    result.push(currentGroup);
+    if (currentGroup.length > len) {
+      len = currentGroup.length
+    }
+  }
+  len = len * (len == 1 ? 350 : 200);
+  if (len > document.body.clientWidth * 0.95) {
+    len = document.body.clientWidth * 0.95
+  }
+  // width.value = len;
+  return { formOptions: result, width: len };
+}
+//表单配置转换为volform表单
+const convertDataToFormOptions = (data, tableName) => {
+  data = data.map(x => { return { ...x } })
+  let fields = {};
+  data.forEach(x => {
+    if (['selectList', 'checkbox', 'cascader', 'treeSelect'].includes(x.formType) || fileType.includes(x.formType)) {
+      fields[x.field] = []
+    } else {
+      fields[x.field] = null;
+    }
+  })
+  return { fields, ...convertToVolFormArray(data, tableName) }
+}
+
+
+const formatLongDecimal = (value) => {
+  if (typeof (value) === 'number' && /\.\d{5,}/.test(value + '')) {
+    return value + ''
+  }
+  return value;
+}
+
+const convertRowsValueToString = (rows, ignoreFields) => {
+  //const types = ['selectList', 'cascader', 'treeSelect']
+  ignoreFields = ignoreFields || []
+  return rows.map(item => {
+    // 每一行对象遍历key
+    const newItem = { ...item };
+    for (const key in newItem) {
+      if (ignoreFields.includes(key)) {
+        continue
+      }
+      // 判断值为数组则逗号拼接
+      if (Array.isArray(newItem[key])) {
+        newItem[key] = newItem[key].join(',');
+      } else {
+        newItem[key] = formatLongDecimal(newItem[key]);
+      }
+    }
+    return newItem;
+  });
+}
+
+const setFormAddOrUpdateReadonly = (formOptions, action) => {
+  formOptions.flat().forEach(x => {
+    if (x.readonlyUpdate) {
+      x.readonly = action != 'Add'
+    } else if (x.readonlyAdd) {
+      x.readonly = action == 'Add'
+    }
+  })
+}
+
+const setFormDefaultValue = (formOptions, formFields) => {
+  formOptions.flat().forEach(x => {
+    if (x.addDefaultValue || x.addDefaultValue + '' === '0') {
+      if ((x.type == 'date' || x.type == 'datetime') && x.addDefaultValue == 'today') {
+        formFields[x.field] = common.getDate(x.type == 'datetime')
+      } else {
+        if (x.data?.length) {
+          const isString = typeof (x.data[0].key) == 'string';
+          //级联、多选、checkbox等待处理
+          formFields[x.field] = isString ? (x.addDefaultValue + '') : (x.addDefaultValue * 1)
+        } else {
+          formFields[x.field] = x.addDefaultValue
+        }
+      }
+    }
+  })
+}
+
 export default {
   getFormValues,
   resetForm,
@@ -333,7 +525,16 @@ export default {
   getColumnDicItem,
   setItem,
   getItem,
+  setAsyncApi,
+  getAsyncApi,
   getAccessToken,
   isEmptyValue,
-  getSearchParameters
+  getSearchParameters,
+  resetFileName,
+  compressImage,
+  convertDataToFormOptions,
+  formatLongDecimal,
+  convertRowsValueToString,
+  setFormAddOrUpdateReadonly,
+  setFormDefaultValue
 }

@@ -1,35 +1,20 @@
 <template>
   <router-view v-slot="{ Component }" v-if="useIncludeCache">
     <keep-alive :include="include">
-      <component
-        :is="Component"
-        :key="$route.name"
-        v-if="
-          isRouterAlive &&
-          (!$route.meta || ($route.meta && !$route.meta.hasOwnProperty('keepAlive')))
-        "
-      />
+      <component :is="Component" :key="route.name" v-if="
+        isRouterAlive &&
+        (route.meta?.keepAlive === undefined || route.meta?.keepAlive === true)
+      " />
     </keep-alive>
-    <component
-      :is="Component"
-      :key="$route.name"
-      v-if="$route.meta && $route.meta.hasOwnProperty('keepAlive')"
-    />
+    <component :is="Component" :key="route.name" v-if="route.meta?.keepAlive === false" />
   </router-view>
 
   <router-view v-slot="{ Component }" v-else>
     <keep-alive>
-      <component
-        :is="Component"
-        :key="$route.name + componentKey"
-        v-if="!$route.meta || ($route.meta && !$route.meta.hasOwnProperty('keepAlive'))"
-      />
+      <component :is="Component" :key="route.name + componentKey"
+        v-if="route.meta?.keepAlive === undefined || route.meta?.keepAlive === true" />
     </keep-alive>
-    <component
-      :is="Component"
-      :key="$route.name"
-      v-if="$route.meta && $route.meta.hasOwnProperty('keepAlive')"
-    />
+    <component :is="Component" :key="route.name" v-if="route.meta?.keepAlive === false" />
   </router-view>
 </template>
 <script setup>
@@ -38,7 +23,7 @@ import { useRouter, useRoute } from 'vue-router'
 import { ref, getCurrentInstance, nextTick } from 'vue'
 const { proxy } = getCurrentInstance()
 const router = useRouter()
-const $route = useRoute()
+const route = useRoute()
 const isRouterAlive = ref(true)
 
 const useIncludeCache = ref(true)
@@ -52,11 +37,11 @@ const refreshPage = (routeName, _callback) => {
   if (!useIncludeCache.value) {
     setTimeout(() => {
       // if ((routeName && typeof (routeName) == 'string')) {
-      routeName = $route.name
+      routeName = route.name
       //}
       componentKey.value = routeName + Date.now()
 
-      router.replace({ ...$route })
+      router.replace({ ...route })
       if (_callback && typeof _callback == 'function') {
         setTimeout(() => {
           _callback()
